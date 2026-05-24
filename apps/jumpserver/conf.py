@@ -333,6 +333,9 @@ class Config(dict):
         # OpenID 配置参数
         # OpenID 公有配置参数 (version <= 1.5.8 或 version >= 1.5.8)
         'AUTH_OPENID': False,
+        'AUTH_OPENID_PROVIDER_TYPE': 'generic',
+        'AUTH_OPENID_ENTRA_TENANT_ID': '',
+        'AUTH_OPENID_ALLOWED_ISSUERS': [],
         'BASE_SITE_URL': None,
         'AUTH_OPENID_CLIENT_ID': 'client-id',
         'AUTH_OPENID_CLIENT_SECRET': 'client-secret',

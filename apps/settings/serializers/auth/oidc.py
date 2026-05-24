@@ -70,6 +70,23 @@ class OIDCSettingSerializer(KeycloakSettingSerializer):
     AUTH_OPENID = serializers.BooleanField(
         required=False, label=_('OIDC'), help_text=_('OpenID Connect')
     )
+    AUTH_OPENID_PROVIDER_TYPE = serializers.ChoiceField(
+        required=False,
+        default='generic',
+        choices=(
+            ('generic', _('Generic')),
+            ('microsoft_entra_id', 'Microsoft Entra ID'),
+        ),
+        label=_('Provider type')
+    )
+    AUTH_OPENID_ENTRA_TENANT_ID = serializers.CharField(
+        required=False, allow_blank=True, max_length=128, label=_('Tenant ID')
+    )
+    AUTH_OPENID_ALLOWED_ISSUERS = serializers.ListField(
+        required=False,
+        child=serializers.CharField(max_length=1024),
+        label=_('Allowed issuers')
+    )
     AUTH_OPENID_PROVIDER_ENDPOINT = serializers.CharField(
         required=False, max_length=1024, label=_('Provider endpoint'),
         help_text=_(

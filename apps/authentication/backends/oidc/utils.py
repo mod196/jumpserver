@@ -21,10 +21,55 @@ from common.utils import get_logger
 
 logger = get_logger(__file__)
 
+PROVIDER_TYPE_MICROSOFT_ENTRA_ID = 'microsoft_entra_id'
+
+
+def normalize_issuer(issuer):
+    if not issuer:
+        return ''
+    return str(issuer).rstrip('/')
+
+
+def build_entra_issuer(tenant_id):
+    tenant_id = (tenant_id or '').strip()
+    if not tenant_id:
+        return ''
+    return f'https://login.microsoftonline.com/{tenant_id}/v2.0'
+
+
+def get_openid_allowed_issuers():
+    allowed_issuers = getattr(settings, 'AUTH_OPENID_ALLOWED_ISSUERS', None) or []
+    if isinstance(allowed_issuers, str):
+        allowed_issuers = [
+            item.strip() for item in allowed_issuers.split(',')
+            if item and item.strip()
+        ]
+
+    issuers = [normalize_issuer(item) for item in allowed_issuers if item]
+    provider_type = getattr(settings, 'AUTH_OPENID_PROVIDER_TYPE', 'generic')
+    if provider_type == PROVIDER_TYPE_MICROSOFT_ENTRA_ID:
+        entra_issuer = build_entra_issuer(getattr(settings, 'AUTH_OPENID_ENTRA_TENANT_ID', ''))
+        provider_endpoint = normalize_issuer(getattr(settings, 'AUTH_OPENID_PROVIDER_ENDPOINT', ''))
+        issuers.extend([item for item in [entra_issuer, provider_endpoint] if item])
+
+    # Preserve order while removing duplicates.
+    return list(dict.fromkeys(issuers))
+
+
+def resolve_claim_value(claims, mapping, default=None):
+    if isinstance(mapping, (list, tuple)):
+        values = [claims.get(item) for item in mapping]
+        return next((item for item in values if item), default)
+    return claims.get(mapping, default)
+
 
 def validate_and_return_id_token(jws, nonce=None, validate_nonce=True):
     """ Validates the id_token according to the OpenID Connect specification. """
     log_prompt = "Validate ID Token: {}"
+    if not jws:
+        logger.debug(log_prompt.format('ID Token is missing'))
+        return
+
     logger.debug(log_prompt.format('Get shared key'))
     shared_key = settings.AUTH_OPENID_CLIENT_ID \
         if settings.AUTH_OPENID_PROVIDER_SIGNATURE_ALG == 'HS256' \
@@ -57,8 +102,9 @@ def _get_jwks_keys(shared_key):
     jwks_keys.load_from_url(settings.AUTH_OPENID_PROVIDER_JWKS_ENDPOINT)
     # Adds the shared key (which can correspond to the client_secret) as an oct key so it can be
     # used for HMAC signatures.
-    logger.debug(log_prompt.format('Add key'))
-    jwks_keys.add({'key': smart_bytes(shared_key), 'kty': 'oct'})
+    if shared_key:
+        logger.debug(log_prompt.format('Add key'))
+        jwks_keys.add({'key': smart_bytes(shared_key), 'kty': 'oct'})
     logger.debug(log_prompt.format('End'))
     return jwks_keys
 
@@ -68,11 +114,18 @@ def _validate_claims(id_token, nonce=None, validate_nonce=True):
     log_prompt = "Validate claims: {}"
     logger.debug(log_prompt.format('Start'))
 
-    iss_parsed_url = urlparse(id_token['iss'])
-    provider_parsed_url = urlparse(settings.AUTH_OPENID_PROVIDER_ENDPOINT)
-    if iss_parsed_url.netloc != provider_parsed_url.netloc:
-        logger.debug(log_prompt.format('Invalid issuer'))
-        raise SuspiciousOperation('Invalid issuer')
+    issuer = normalize_issuer(id_token['iss'])
+    allowed_issuers = get_openid_allowed_issuers()
+    if allowed_issuers:
+        if issuer not in allowed_issuers:
+            logger.debug(log_prompt.format('Invalid issuer'))
+            raise SuspiciousOperation('Invalid issuer')
+    else:
+        iss_parsed_url = urlparse(issuer)
+        provider_parsed_url = urlparse(settings.AUTH_OPENID_PROVIDER_ENDPOINT)
+        if iss_parsed_url.netloc != provider_parsed_url.netloc:
+            logger.debug(log_prompt.format('Invalid issuer'))
+            raise SuspiciousOperation('Invalid issuer')
 
     if isinstance(id_token['aud'], str):
         id_token['aud'] = [id_token['aud']]

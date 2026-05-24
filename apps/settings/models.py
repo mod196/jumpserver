@@ -238,6 +238,13 @@ def register_sqlite_connection():
         'CONN_MAX_AGE': 0,
         'OPTIONS': {},
         'AUTOCOMMIT': True,
+        'TEST': {
+            'CHARSET': None,
+            'COLLATION': None,
+            'MIGRATE': True,
+            'MIRROR': None,
+            'NAME': None,
+        },
     }
 
 

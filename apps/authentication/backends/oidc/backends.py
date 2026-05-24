@@ -24,12 +24,20 @@ from .decorator import ssl_verification
 from .signals import (
     openid_create_or_update_user
 )
-from .utils import validate_and_return_id_token
+from .utils import resolve_claim_value, validate_and_return_id_token
 from ..base import JMSBaseAuthBackend
 
 logger = get_logger(__file__)
 
 __all__ = ['OIDCAuthCodeBackend', 'OIDCAuthPasswordBackend']
+
+
+def _response_status_code(response):
+    return getattr(response, 'status_code', 'unavailable')
+
+
+def _safe_exception_name(error):
+    return error.__class__.__name__
 
 
 class UserMixin:
@@ -44,7 +52,7 @@ class UserMixin:
         # Construct user attrs value
         user_attrs = {}
         for field, attr in settings.AUTH_OPENID_USER_ATTR_MAP.items():
-            user_attrs[field] = claims.get(attr, sub)
+            user_attrs[field] = resolve_claim_value(claims, attr, sub)
         email = user_attrs.get('email', '')
         email = construct_user_email(user_attrs.get('username'), email)
         user_attrs.update({'email': email})
@@ -152,15 +160,16 @@ class OIDCAuthCodeBackend(OIDCBaseBackend):
 
         # Calls the token endpoint.
         logger.debug(log_prompt.format('Call the token endpoint'))
-        token_response = requests.post(
-            settings.AUTH_OPENID_PROVIDER_TOKEN_ENDPOINT, data=token_payload, headers=headers
-        )
+        token_response = None
         try:
+            token_response = requests.post(
+                settings.AUTH_OPENID_PROVIDER_TOKEN_ENDPOINT, data=token_payload, headers=headers
+            )
             token_response.raise_for_status()
             token_response_data = token_response.json()
         except Exception as e:
-            error = "Json token response error, token response " \
-                    "content is: {}, error is: {}".format(token_response.content, str(e))
+            error = "Json token response error, status code is: {}, error type is: {}" \
+                    "".format(_response_status_code(token_response), _safe_exception_name(e))
             logger.debug(log_prompt.format(error))
             return
 
@@ -169,9 +178,7 @@ class OIDCAuthCodeBackend(OIDCBaseBackend):
         raw_id_token = token_response_data.get('id_token')
         id_token = validate_and_return_id_token(raw_id_token, nonce)
         if id_token is None:
-            logger.debug(log_prompt.format(
-                'ID Token is missing, raw id token is: {}'.format(raw_id_token))
-            )
+            logger.debug(log_prompt.format('ID Token is missing or invalid'))
             return
 
         # Retrieves the access token and refresh token.
@@ -192,16 +199,17 @@ class OIDCAuthCodeBackend(OIDCBaseBackend):
         else:
             # Fetches the claims (user information) from the userinfo endpoint provided by the OP.
             logger.debug(log_prompt.format('Fetches the claims from the userinfo endpoint'))
-            claims_response = requests.get(
-                settings.AUTH_OPENID_PROVIDER_USERINFO_ENDPOINT,
-                headers={'Authorization': 'Bearer {0}'.format(access_token)}
-            )
+            claims_response = None
             try:
+                claims_response = requests.get(
+                    settings.AUTH_OPENID_PROVIDER_USERINFO_ENDPOINT,
+                    headers={'Authorization': 'Bearer {0}'.format(access_token)}
+                )
                 claims_response.raise_for_status()
                 claims = claims_response.json()
             except Exception as e:
-                error = "Json claims response error, claims response " \
-                        "content is: {}, error is: {}".format(claims_response.content, str(e))
+                error = "Json claims response error, status code is: {}, error type is: {}" \
+                        "".format(_response_status_code(claims_response), _safe_exception_name(e))
                 logger.debug(log_prompt.format(error))
                 return
 
@@ -265,14 +273,17 @@ class OIDCAuthPasswordBackend(OIDCBaseBackend):
 
         # Calls the token endpoint.
         logger.debug(log_prompt.format('Call the token endpoint'))
-        token_response = requests.post(settings.AUTH_OPENID_PROVIDER_TOKEN_ENDPOINT, data=token_payload,
-                                       timeout=request_timeout)
+        token_response = None
         try:
+            token_response = requests.post(
+                settings.AUTH_OPENID_PROVIDER_TOKEN_ENDPOINT, data=token_payload,
+                timeout=request_timeout
+            )
             token_response.raise_for_status()
             token_response_data = token_response.json()
         except Exception as e:
-            error = "Json token response error, token response " \
-                    "content is: {}, error is: {}".format(token_response.content, str(e))
+            error = "Json token response error, status code is: {}, error type is: {}" \
+                    "".format(_response_status_code(token_response), _safe_exception_name(e))
             logger.debug(log_prompt.format(error))
             logger.debug(log_prompt.format('Send signal => openid user login failed'))
             user_auth_failed.send(
@@ -286,12 +297,13 @@ class OIDCAuthPasswordBackend(OIDCBaseBackend):
 
         # Fetches the claims (user information) from the userinfo endpoint provided by the OP.
         logger.debug(log_prompt.format('Fetches the claims from the userinfo endpoint'))
-        claims_response = requests.get(
-            settings.AUTH_OPENID_PROVIDER_USERINFO_ENDPOINT,
-            headers={'Authorization': 'Bearer {0}'.format(access_token)},
-            timeout=request_timeout
-        )
+        claims_response = None
         try:
+            claims_response = requests.get(
+                settings.AUTH_OPENID_PROVIDER_USERINFO_ENDPOINT,
+                headers={'Authorization': 'Bearer {0}'.format(access_token)},
+                timeout=request_timeout
+            )
             claims_response.raise_for_status()
             claims = claims_response.json()
             preferred_username = claims.get('preferred_username')
@@ -300,8 +312,8 @@ class OIDCAuthPasswordBackend(OIDCBaseBackend):
                     preferred_username != username:
                 return
         except Exception as e:
-            error = "Json claims response error, claims response " \
-                    "content is: {}, error is: {}".format(claims_response.content, str(e))
+            error = "Json claims response error, status code is: {}, error type is: {}" \
+                    "".format(_response_status_code(claims_response), _safe_exception_name(e))
             logger.debug(log_prompt.format(error))
             logger.debug(log_prompt.format('Send signal => openid user login failed'))
             user_auth_failed.send(
