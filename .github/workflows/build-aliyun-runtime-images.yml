@@ -1,0 +1,146 @@
+name: Build Aliyun Runtime Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Target image tag pushed to Aliyun
+        required: true
+        default: v4.10.16-ce-oidc.1
+      core_ref:
+        description: Core git ref to build
+        required: true
+        default: v4.10.16-ce-oidc.1
+      lina_ref:
+        description: Lina git ref to build web image
+        required: true
+        default: v4.10.16-ce-oidc.1
+      upstream_component_tag:
+        description: Official JumpServer component tag for unchanged koko/lion/chen
+        required: true
+        default: v4.10.16-ce
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ${{ secrets.ALIYUN_REGISTRY }}
+  NAMESPACE: ${{ secrets.ALIYUN_NAMESPACE }}
+  IMAGE_TAG: ${{ inputs.image_tag }}
+  UPSTREAM_COMPONENT_TAG: ${{ inputs.upstream_component_tag }}
+
+jobs:
+  build-core:
+    name: Build core image
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout core
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.core_ref }}
+          path: core
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Aliyun registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+
+      - name: Build and push core
+        uses: docker/build-push-action@v6
+        with:
+          context: core
+          file: core/Dockerfile
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            VERSION=${{ env.IMAGE_TAG }}
+          tags: ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/jumpserver-core:${{ env.IMAGE_TAG }}
+          cache-from: type=gha,scope=aliyun-core
+          cache-to: type=gha,scope=aliyun-core,mode=max
+
+  build-web:
+    name: Build web image
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout lina
+        uses: actions/checkout@v4
+        with:
+          repository: mod196/lina
+          ref: ${{ inputs.lina_ref }}
+          path: lina
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Aliyun registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+
+      - name: Build and push web
+        uses: docker/build-push-action@v6
+        with:
+          context: lina
+          file: lina/Dockerfile
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            VERSION=${{ env.IMAGE_TAG }}
+          tags: ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/jumpserver-web:${{ env.IMAGE_TAG }}
+          cache-from: type=gha,scope=aliyun-web
+          cache-to: type=gha,scope=aliyun-web,mode=max
+
+  mirror-components:
+    name: Mirror unchanged component images
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Login to Aliyun registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+
+      - name: Pull, retag, and push official components
+        shell: bash
+        run: |
+          set -euo pipefail
+          for component in chen lion koko; do
+            src="jumpserver/${component}:${UPSTREAM_COMPONENT_TAG}"
+            dst="${REGISTRY}/${NAMESPACE}/jumpserver-${component}:${IMAGE_TAG}"
+            docker pull --platform linux/amd64 "${src}"
+            docker tag "${src}" "${dst}"
+            docker push "${dst}"
+          done
+
+  summary:
+    name: Image summary
+    runs-on: ubuntu-22.04
+    needs:
+      - build-core
+      - build-web
+      - mirror-components
+    if: ${{ always() }}
+    steps:
+      - name: Fail on incomplete image publishing
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: exit 1
+
+      - name: Write image list
+        run: |
+          {
+            echo "## Aliyun images"
+            echo
+            echo "- ${REGISTRY}/${NAMESPACE}/jumpserver-core:${IMAGE_TAG}"
+            echo "- ${REGISTRY}/${NAMESPACE}/jumpserver-web:${IMAGE_TAG}"
+            echo "- ${REGISTRY}/${NAMESPACE}/jumpserver-chen:${IMAGE_TAG}"
+            echo "- ${REGISTRY}/${NAMESPACE}/jumpserver-lion:${IMAGE_TAG}"
+            echo "- ${REGISTRY}/${NAMESPACE}/jumpserver-koko:${IMAGE_TAG}"
+          } >> "${GITHUB_STEP_SUMMARY}"
