@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.backends import ModelBackend
 
@@ -63,5 +64,11 @@ class JMSBaseAuthBackend:
 
 
 class JMSModelBackend(JMSBaseAuthBackend, ModelBackend):
-     def user_can_authenticate(self, user):
+    @classmethod
+    def is_enabled(cls):
+        if cls.__name__ == 'JMSModelBackend' and settings.DISABLE_LOCAL_PASSWORD_LOGIN:
+            return False
+        return True
+
+    def user_can_authenticate(self, user):
         return True

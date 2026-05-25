@@ -96,6 +96,10 @@ REDIS_PORT: 6379
 # 仅允许已存在的用户登录，不允许第三方认证后，自动创建用户
 # ONLY_ALLOW_EXIST_USER_AUTH: False
 
+# 禁用本地账号密码登录
+# 启用后，即使访问 ?admin=1 也不会显示或接受用户名密码登录，请确保第三方认证可用
+# DISABLE_LOCAL_PASSWORD_LOGIN: False
+
 # 开启人脸识别 XPACK 功能
 #FACE_RECOGNITION_ENABLED: true
 #FACE_RECOGNITION_DISTANCE_THRESHOLD': 0.35

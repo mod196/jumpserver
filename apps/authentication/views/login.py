@@ -12,7 +12,7 @@ from django.conf import settings
 from django.contrib.auth import BACKEND_SESSION_KEY
 from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.db import IntegrityError
-from django.http import HttpRequest
+from django.http import HttpRequest, HttpResponseForbidden
 from django.shortcuts import reverse, redirect
 from django.urls import reverse_lazy
 from django.utils.decorators import method_decorator
@@ -128,12 +128,16 @@ class UserLoginContextMixin:
         self.set_csrf_error_if_need(context)
         auth_methods = self.get_support_auth_methods()
         is_admin_login = self.is_admin_login()
-        is_sso_only_login = bool(auth_methods) and not is_admin_login
+        local_password_login_disabled = settings.DISABLE_LOCAL_PASSWORD_LOGIN
+        is_sso_only_login = bool(auth_methods) and (
+            not is_admin_login or local_password_login_disabled
+        )
         primary_auth_method = auth_methods[0] if is_sso_only_login else None
         context.update({
             'demo_mode': os.environ.get("DEMO_MODE"),
             'auth_methods': auth_methods,
             'is_admin_login': is_admin_login,
+            'local_password_login_disabled': local_password_login_disabled,
             'is_sso_only_login': is_sso_only_login,
             'primary_auth_method': primary_auth_method,
             'langs': self.get_support_langs(),
@@ -154,7 +158,7 @@ class UserLoginView(mixins.AuthMixin, UserLoginContextMixin, FormView):
 
     def redirect_third_party_auth_if_need(self, request):
         # show jumpserver login page if request http://{JUMP-SERVER}/?admin=1
-        if self.is_admin_login():
+        if self.is_admin_login() and not settings.DISABLE_LOCAL_PASSWORD_LOGIN:
             return None
 
         # After an OIDC logout, land on the login page without immediately
@@ -200,10 +204,17 @@ class UserLoginView(mixins.AuthMixin, UserLoginContextMixin, FormView):
                 'redirect_url': redirect_url,
                 'interval': 3,
                 'has_cancel': True,
-                'cancel_url': reverse('authentication:login') + f'?admin=1&{query}'
+                'cancel_url': self.get_redirect_cancel_url(query)
             }
             redirect_url = FlashMessageUtil.gen_message_url(message_data)
         return redirect_url
+
+    @staticmethod
+    def get_redirect_cancel_url(query):
+        if settings.DISABLE_LOCAL_PASSWORD_LOGIN:
+            query = f'oidc_logged_out=1&{query}' if query else 'oidc_logged_out=1'
+            return reverse('authentication:login') + f'?{query}'
+        return reverse('authentication:login') + f'?admin=1&{query}'
 
     def get(self, request, *args, **kwargs):
         next_page = request.GET.get(self.redirect_field_name)
@@ -220,6 +231,11 @@ class UserLoginView(mixins.AuthMixin, UserLoginContextMixin, FormView):
             return redirect(redirect_url)
         request.session.set_test_cookie()
         return super().get(request, *args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        if settings.DISABLE_LOCAL_PASSWORD_LOGIN:
+            return HttpResponseForbidden(_('Local password login is disabled.'))
+        return super().post(request, *args, **kwargs)
 
     def form_valid(self, form):
         if not self.request.session.test_cookie_worked():

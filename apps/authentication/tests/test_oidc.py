@@ -5,6 +5,8 @@ from calendar import timegm
 from urllib.parse import parse_qs, urlparse
 from unittest import mock
 
+from django.contrib import auth
+from django.contrib.auth import get_user_model
 from django.core.exceptions import SuspiciousOperation
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
@@ -37,6 +39,20 @@ ONLY_OPENID_AUTH_SETTINGS = {
 NO_THIRD_PARTY_AUTH_SETTINGS = {
     **ONLY_OPENID_AUTH_SETTINGS,
     'AUTH_OPENID': False,
+}
+
+LOCAL_PASSWORD_DISABLED_AUTH_SETTINGS = {
+    **NO_THIRD_PARTY_AUTH_SETTINGS,
+    'AUTH_LDAP': False,
+    'AUTH_LDAP_HA': False,
+    'AUTH_RADIUS': False,
+    'TERMINAL_PUBLIC_KEY_AUTH': False,
+    'DISABLE_LOCAL_PASSWORD_LOGIN': True,
+}
+
+LOCAL_PASSWORD_ENABLED_AUTH_SETTINGS = {
+    **LOCAL_PASSWORD_DISABLED_AUTH_SETTINGS,
+    'DISABLE_LOCAL_PASSWORD_LOGIN': False,
 }
 
 ONLY_OPENID_DEFAULT_LOGIN_SETTINGS = {
@@ -267,3 +283,51 @@ class LoginTemplateTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'name="username"')
         self.assertContains(response, 'id="password"')
+
+    @override_settings(**ONLY_OPENID_DEFAULT_LOGIN_SETTINGS, DISABLE_LOCAL_PASSWORD_LOGIN=True)
+    def test_admin_login_page_is_sso_only_when_local_password_disabled(self):
+        response = self.client.get(reverse('authentication:login') + '?admin=1')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'OpenID')
+        self.assertContains(response, 'microsoft-logo')
+        self.assertNotContains(response, 'name="username"')
+        self.assertNotContains(response, 'id="password"')
+
+    @override_settings(**LOCAL_PASSWORD_DISABLED_AUTH_SETTINGS)
+    def test_login_page_does_not_fallback_to_password_when_local_password_disabled(self):
+        response = self.client.get(reverse('authentication:login'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Local password login is disabled')
+        self.assertNotContains(response, 'name="username"')
+        self.assertNotContains(response, 'id="password"')
+
+    @override_settings(**LOCAL_PASSWORD_DISABLED_AUTH_SETTINGS)
+    def test_local_password_post_is_forbidden_when_disabled(self):
+        response = self.client.post(reverse('authentication:login') + '?admin=1', {
+            'username': 'admin',
+            'password': 'password',
+        })
+
+        self.assertEqual(response.status_code, 403)
+        self.assertContains(response, 'Local password login is disabled', status_code=403)
+
+    @override_settings(**LOCAL_PASSWORD_DISABLED_AUTH_SETTINGS)
+    def test_model_password_backend_is_disabled_when_local_password_disabled(self):
+        user_model = get_user_model()
+        user_model.objects.create_user(username='local-admin', password='password')
+
+        user = auth.authenticate(username='local-admin', password='password')
+
+        self.assertIsNone(user)
+
+    @override_settings(**LOCAL_PASSWORD_ENABLED_AUTH_SETTINGS)
+    def test_model_password_backend_still_works_by_default(self):
+        user_model = get_user_model()
+        user_model.objects.create_user(username='local-admin', password='password')
+
+        user = auth.authenticate(username='local-admin', password='password')
+
+        self.assertIsNotNone(user)
+        self.assertEqual(user.username, 'local-admin')

@@ -465,6 +465,12 @@
                             <span>{{ primary_auth_method.name }} {% trans 'Login' %}</span>
                         </a>
                     </div>
+                {% elif local_password_login_disabled %}
+                    <div class="sso-login-panel">
+                        <p class="help-block text-center">
+                            {% trans 'Local password login is disabled. Please contact the administrator.' %}
+                        </p>
+                    </div>
                 {% else %}
                 <form id="login-form" action="" method="post" role="form" novalidate="novalidate">
                     {% csrf_token %}
