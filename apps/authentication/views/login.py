@@ -167,11 +167,11 @@ class UserLoginView(mixins.AuthMixin, UserLoginContextMixin, FormView):
         if not auth_types:
             return None
 
-        # 明确直接登录哪个
         login_to = settings.LOGIN_REDIRECT_TO_BACKEND.upper()
-        if login_to == 'DIRECT':
+        if not login_to or login_to == 'DIRECT':
             return None
 
+        # 明确直接登录哪个
         auth_method = next(filter(lambda x: x['name'] == login_to, auth_types), None)
         if not auth_method:
             auth_method = auth_types[0]

@@ -39,6 +39,11 @@ NO_THIRD_PARTY_AUTH_SETTINGS = {
     'AUTH_OPENID': False,
 }
 
+ONLY_OPENID_DEFAULT_LOGIN_SETTINGS = {
+    **ONLY_OPENID_AUTH_SETTINGS,
+    'LOGIN_REDIRECT_TO_BACKEND': '',
+}
+
 
 def make_id_token(**overrides):
     now = timegm(dt.datetime.utcnow().utctimetuple())
@@ -220,6 +225,15 @@ class OIDCTests(SimpleTestCase):
 
 
 class LoginTemplateTests(TestCase):
+    @override_settings(**ONLY_OPENID_DEFAULT_LOGIN_SETTINGS)
+    def test_default_login_page_is_sso_only(self):
+        response = self.client.get(reverse('authentication:login'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'OpenID')
+        self.assertNotContains(response, 'name="username"')
+        self.assertNotContains(response, 'id="password"')
+
     @override_settings(**ONLY_OPENID_AUTH_SETTINGS)
     def test_oidc_logout_login_page_is_sso_only(self):
         url = reverse('authentication:login') + '?oidc_logged_out=1&next=/ui/'
