@@ -38,14 +38,25 @@ __all__ = [
     'UserLoginGuardView', 'UserLoginWaitConfirmView',
 ]
 
+LOCAL_LOGIN_CONTROL_QUERY_PARAMS = {'admin', 'oidc_logged_out', 'csrf_failure'}
+
 
 class UserLoginContextMixin:
     get_user_mfa_context: Callable
     request: HttpRequest
     error_origin: str
 
+    def is_admin_login(self):
+        return self.request.GET.get('admin') == '1'
+
+    def get_auth_method_query_string(self):
+        query = self.request.GET.copy()
+        for key in LOCAL_LOGIN_CONTROL_QUERY_PARAMS:
+            query.pop(key, None)
+        return query.urlencode()
+
     def get_support_auth_methods(self):
-        query_string = self.request.GET.urlencode()
+        query_string = self.get_auth_method_query_string()
         all_methods = get_auth_methods()
         methods = []
         for method in all_methods:
@@ -115,9 +126,16 @@ class UserLoginContextMixin:
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         self.set_csrf_error_if_need(context)
+        auth_methods = self.get_support_auth_methods()
+        is_admin_login = self.is_admin_login()
+        is_sso_only_login = bool(auth_methods) and not is_admin_login
+        primary_auth_method = auth_methods[0] if is_sso_only_login else None
         context.update({
             'demo_mode': os.environ.get("DEMO_MODE"),
-            'auth_methods': self.get_support_auth_methods(),
+            'auth_methods': auth_methods,
+            'is_admin_login': is_admin_login,
+            'is_sso_only_login': is_sso_only_login,
+            'primary_auth_method': primary_auth_method,
             'langs': self.get_support_langs(),
             'current_lang': self.get_current_lang(),
             'forgot_password_url': self.get_forgot_password_url(),
@@ -136,7 +154,7 @@ class UserLoginView(mixins.AuthMixin, UserLoginContextMixin, FormView):
 
     def redirect_third_party_auth_if_need(self, request):
         # show jumpserver login page if request http://{JUMP-SERVER}/?admin=1
-        if self.request.GET.get("admin", 0):
+        if self.is_admin_login():
             return None
 
         # After an OIDC logout, land on the login page without immediately
@@ -164,6 +182,8 @@ class UserLoginView(mixins.AuthMixin, UserLoginContextMixin, FormView):
 
         merged_qs_items = dict(request.GET.lists())
         merged_qs_items.pop('next', None)
+        for key in LOCAL_LOGIN_CONTROL_QUERY_PARAMS:
+            merged_qs_items.pop(key, None)
 
         merged = {}
         for k, v_list in merged_qs_items.items():

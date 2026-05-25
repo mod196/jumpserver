@@ -6,7 +6,8 @@ from urllib.parse import parse_qs, urlparse
 from unittest import mock
 
 from django.core.exceptions import SuspiciousOperation
-from django.test import RequestFactory, SimpleTestCase, override_settings
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
+from django.urls import reverse
 
 from authentication.backends.oidc.views import OIDCEndSessionView
 from authentication.backends.oidc.backends import OIDCAuthCodeBackend
@@ -17,6 +18,26 @@ from authentication.backends.oidc.utils import (
 )
 from authentication.management.commands.configure_oidc_from_env import Command
 from authentication.views.login import UserLoginView
+
+
+ONLY_OPENID_AUTH_SETTINGS = {
+    'AUTH_OPENID': True,
+    'AUTH_CAS': False,
+    'AUTH_SAML2': False,
+    'AUTH_OAUTH2': False,
+    'AUTH_WECOM': False,
+    'AUTH_DINGTALK': False,
+    'AUTH_FEISHU': False,
+    'AUTH_LARK': False,
+    'AUTH_SLACK': False,
+    'AUTH_PASSKEY': False,
+}
+
+
+NO_THIRD_PARTY_AUTH_SETTINGS = {
+    **ONLY_OPENID_AUTH_SETTINGS,
+    'AUTH_OPENID': False,
+}
 
 
 def make_id_token(**overrides):
@@ -196,3 +217,36 @@ class OIDCTests(SimpleTestCase):
             query['post_logout_redirect_uri'],
             ['https://jumpserver.example.com/core/auth/login/?oidc_logged_out=1'],
         )
+
+
+class LoginTemplateTests(TestCase):
+    @override_settings(**ONLY_OPENID_AUTH_SETTINGS)
+    def test_oidc_logout_login_page_is_sso_only(self):
+        url = reverse('authentication:login') + '?oidc_logged_out=1&next=/ui/'
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'OpenID')
+        self.assertContains(response, '/core/auth/openid/login/?next=%2Fui%2F')
+        self.assertNotContains(response, 'name="username"')
+        self.assertNotContains(response, 'id="password"')
+        self.assertNotContains(response, 'forgot_password')
+        self.assertNotContains(response, 'oidc_logged_out')
+
+    @override_settings(**ONLY_OPENID_AUTH_SETTINGS)
+    def test_admin_login_page_keeps_local_password_form(self):
+        response = self.client.get(reverse('authentication:login') + '?admin=1')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="username"')
+        self.assertContains(response, 'id="password"')
+        self.assertContains(response, 'OpenID')
+        self.assertNotContains(response, '/core/auth/openid/login/?admin=1')
+
+    @override_settings(**NO_THIRD_PARTY_AUTH_SETTINGS)
+    def test_login_page_falls_back_to_password_form_without_sso(self):
+        response = self.client.get(reverse('authentication:login') + '?oidc_logged_out=1')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="username"')
+        self.assertContains(response, 'id="password"')
