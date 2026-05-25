@@ -139,6 +139,12 @@ class UserLoginView(mixins.AuthMixin, UserLoginContextMixin, FormView):
         if self.request.GET.get("admin", 0):
             return None
 
+        # After an OIDC logout, land on the login page without immediately
+        # starting a new OIDC login. Otherwise the flash-message cancel link
+        # becomes the admin escape hatch by default.
+        if self.request.GET.get("oidc_logged_out", 0):
+            return None
+
         auth_types = [m for m in self.get_support_auth_methods() if m.get('auto_redirect')]
         if not auth_types:
             return None

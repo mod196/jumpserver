@@ -2,11 +2,13 @@ import datetime as dt
 import io
 import os
 from calendar import timegm
+from urllib.parse import parse_qs, urlparse
 from unittest import mock
 
 from django.core.exceptions import SuspiciousOperation
 from django.test import RequestFactory, SimpleTestCase, override_settings
 
+from authentication.backends.oidc.views import OIDCEndSessionView
 from authentication.backends.oidc.backends import OIDCAuthCodeBackend
 from authentication.backends.oidc.utils import (
     _validate_claims,
@@ -14,6 +16,7 @@ from authentication.backends.oidc.utils import (
     resolve_claim_value,
 )
 from authentication.management.commands.configure_oidc_from_env import Command
+from authentication.views.login import UserLoginView
 
 
 def make_id_token(**overrides):
@@ -157,3 +160,39 @@ class OIDCTests(SimpleTestCase):
         self.assertIn('status code is: 401', log_output)
         self.assertNotIn('raw-token', log_output)
         self.assertNotIn('super-secret-client-value', log_output)
+
+    def test_login_does_not_auto_redirect_after_oidc_logout(self):
+        request = RequestFactory().get('/core/auth/login/?oidc_logged_out=1')
+        view = UserLoginView()
+        view.request = request
+        view.get_support_auth_methods = mock.Mock(return_value=[
+            {
+                'name': 'OPENID',
+                'enabled': True,
+                'url': '/core/auth/openid/login/',
+                'auto_redirect': True,
+            }
+        ])
+
+        self.assertIsNone(view.redirect_third_party_auth_if_need(request))
+
+    @override_settings(
+        BASE_SITE_URL='https://jumpserver.example.com',
+        AUTH_OPENID_PROVIDER_END_SESSION_ENDPOINT='https://login.microsoftonline.com/tenant/oauth2/v2.0/logout',
+        AUTH_OPENID_PROVIDER_END_SESSION_REDIRECT_URI_PARAMETER='post_logout_redirect_uri',
+        AUTH_OPENID_PROVIDER_END_SESSION_ID_TOKEN_PARAMETER='id_token_hint',
+    )
+    def test_oidc_logout_returns_to_non_auto_redirect_login_page(self):
+        request = RequestFactory().get('/core/auth/openid/logout/')
+        request.session = {'oidc_auth_id_token': 'id-token'}
+
+        view = OIDCEndSessionView()
+        view.request = request
+        logout_url = view.provider_end_session_url
+
+        query = parse_qs(urlparse(logout_url).query)
+        self.assertEqual(query['id_token_hint'], ['id-token'])
+        self.assertEqual(
+            query['post_logout_redirect_uri'],
+            ['https://jumpserver.example.com/core/auth/login/?oidc_logged_out=1'],
+        )

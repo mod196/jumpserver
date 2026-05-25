@@ -230,7 +230,7 @@ class OIDCEndSessionView(View):
         log_prompt = "Process POST requests [OIDCEndSessionView]: {}"
         logger.debug(log_prompt.format('Start'))
 
-        logout_url = settings.LOGOUT_REDIRECT_URL or '/'
+        logout_url = self.local_logout_redirect_url
 
         # Log out the current user.
         if request.user.is_authenticated:
@@ -248,11 +248,15 @@ class OIDCEndSessionView(View):
         return HttpResponseRedirect(logout_url)
 
     @property
+    def local_logout_redirect_url(self):
+        return reverse('authentication:login') + '?oidc_logged_out=1'
+
+    @property
     def provider_end_session_url(self):
         """ Returns the end-session URL. """
         q = QueryDict(mutable=True)
         q[settings.AUTH_OPENID_PROVIDER_END_SESSION_REDIRECT_URI_PARAMETER] = \
-            build_absolute_uri_for_oidc(self.request, path=settings.LOGOUT_REDIRECT_URL or '/')
+            build_absolute_uri_for_oidc(self.request, path=self.local_logout_redirect_url)
         q[settings.AUTH_OPENID_PROVIDER_END_SESSION_ID_TOKEN_PARAMETER] = \
             self.request.session['oidc_auth_id_token']
         return '{}?{}'.format(settings.AUTH_OPENID_PROVIDER_END_SESSION_ENDPOINT, q.urlencode())
