@@ -84,15 +84,36 @@ jobs:
           username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
           password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
 
+      - name: Write JumpServer web runtime Dockerfile
+        shell: bash
+        run: |
+          cat > lina/Dockerfile.aliyun-web <<'EOF'
+          ARG UPSTREAM_COMPONENT_TAG
+
+          FROM jumpserver/lina-base:20260114_045651 AS stage-build
+          ARG VERSION
+          ENV VERSION=$VERSION
+
+          ADD . /data
+
+          RUN --mount=type=cache,target=/usr/local/share/.cache/yarn,sharing=locked \
+              sed -i "s@version-dev@${VERSION}@g" src/layout/components/NavHeader/About.vue \
+              && yarn build
+
+          FROM jumpserver/web:${UPSTREAM_COMPONENT_TAG}
+          COPY --from=stage-build /data/lina /opt/lina
+          EOF
+
       - name: Build and push web
         uses: docker/build-push-action@v6
         with:
           context: lina
-          file: lina/Dockerfile
+          file: lina/Dockerfile.aliyun-web
           platforms: linux/amd64
           push: true
           build-args: |
             VERSION=${{ env.IMAGE_TAG }}
+            UPSTREAM_COMPONENT_TAG=${{ env.UPSTREAM_COMPONENT_TAG }}
           tags: ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/jumpserver-web:${{ env.IMAGE_TAG }}
           cache-from: type=gha,scope=aliyun-web
           cache-to: type=gha,scope=aliyun-web,mode=max
