@@ -279,6 +279,10 @@
             margin: 0;
         }
 
+        .left-form-box.sso-only-login .navbar-top-links.navbar-right {
+            margin-right: 0;
+        }
+
         .left-form-box.sso-only-login .login-page-language {
             margin-right: 0 !important;
             padding: 6px 0 !important;
@@ -294,6 +298,7 @@
             justify-content: center;
             gap: 12px;
             height: 46px;
+            box-sizing: border-box;
             text-decoration: none !important;
         }
 
@@ -365,6 +370,17 @@
                 text-align: left;
             }
 
+            .mobile-logo .jms-title {
+                justify-content: flex-start;
+            }
+
+            .mobile-logo .jms-title span {
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
             .right-image {
                 height: revert;
                 width: revert;
@@ -381,7 +397,7 @@
 
             .left-form-box.sso-only-login .form-panel .form-mobile,
             .left-form-box.sso-only-login .form-panel .contact-form {
-                width: calc(100% - 90px);
+                width: calc(100vw - 90px);
                 max-width: none;
             }
         }
