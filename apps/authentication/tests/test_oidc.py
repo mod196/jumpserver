@@ -231,6 +231,8 @@ class LoginTemplateTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'OpenID')
+        self.assertContains(response, 'microsoft-logo')
+        self.assertNotContains(response, 'login_oidc_logo.png')
         self.assertNotContains(response, 'name="username"')
         self.assertNotContains(response, 'id="password"')
 
@@ -241,6 +243,7 @@ class LoginTemplateTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'OpenID')
+        self.assertContains(response, 'microsoft-logo')
         self.assertContains(response, '/core/auth/openid/login/?next=%2Fui%2F')
         self.assertNotContains(response, 'name="username"')
         self.assertNotContains(response, 'id="password"')

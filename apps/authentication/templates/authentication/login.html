@@ -251,21 +251,80 @@
 
         }
 
+        .left-form-box.sso-only-login .form-panel .form-mobile,
+        .left-form-box.sso-only-login .form-panel .contact-form {
+            width: 76%;
+            max-width: 380px;
+            margin-left: auto;
+            margin-right: auto;
+            padding-left: 0;
+            padding-right: 0;
+        }
+
+        .left-form-box.sso-only-login .form-panel .form-mobile {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-top: 0;
+            padding-bottom: 0;
+        }
+
+        .left-form-box.sso-only-login .form-panel .form-mobile h2 {
+            margin: 0;
+            line-height: 1.2;
+        }
+
+        .left-form-box.sso-only-login .navbar-top-links {
+            float: none;
+            margin: 0;
+        }
+
+        .left-form-box.sso-only-login .login-page-language {
+            margin-right: 0 !important;
+            padding: 6px 0 !important;
+        }
+
         .sso-login-panel {
-            margin-top: 52px;
+            margin-top: 76px;
         }
 
         .sso-login-button {
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 8px;
+            gap: 12px;
+            height: 46px;
             text-decoration: none !important;
         }
 
-        .sso-login-button img {
-            width: 16px;
-            height: 16px;
+        .microsoft-logo {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+            gap: 2px;
+            width: 18px;
+            height: 18px;
+            flex: 0 0 18px;
+        }
+
+        .microsoft-logo span {
+            display: block;
+        }
+
+        .microsoft-logo .microsoft-red {
+            background: #f25022;
+        }
+
+        .microsoft-logo .microsoft-green {
+            background: #7fba00;
+        }
+
+        .microsoft-logo .microsoft-blue {
+            background: #00a4ef;
+        }
+
+        .microsoft-logo .microsoft-yellow {
+            background: #ffb900;
         }
 
         .error-info {
@@ -319,6 +378,12 @@
                 padding: 0;
                 margin: 0;
             }
+
+            .left-form-box.sso-only-login .form-panel .form-mobile,
+            .left-form-box.sso-only-login .form-panel .contact-form {
+                width: calc(100% - 90px);
+                max-width: none;
+            }
         }
     </style>
 </head>
@@ -337,7 +402,7 @@
             <img src="{{ INTERFACE.login_image }}" class="right-image" alt="screen-image"/>
         </a>
     </div>
-    <div class="left-form-box {% if not form.challenge and not form.captcha %} no-captcha-challenge {% endif %}">
+    <div class="left-form-box {% if is_sso_only_login and primary_auth_method %} sso-only-login {% endif %}{% if not form.challenge and not form.captcha %} no-captcha-challenge {% endif %}">
         <div class="mobile-logo" style="padding-bottom: 45px; box-sizing: border-box">
             <div class="jms-title">
                 <img style="width: 60px; height: 60px" src="{{ INTERFACE.logo_logout }}" alt="Logo"/>
@@ -373,7 +438,12 @@
                     <div class="sso-login-panel">
                         <a href="{{ primary_auth_method.url }}"
                            class="btn btn-transparent sso-login-button">
-                            <img src="{{ primary_auth_method.logo }}" alt="{{ primary_auth_method.name }}"/>
+                            <span class="microsoft-logo" aria-hidden="true">
+                                <span class="microsoft-red"></span>
+                                <span class="microsoft-green"></span>
+                                <span class="microsoft-blue"></span>
+                                <span class="microsoft-yellow"></span>
+                            </span>
                             <span>{{ primary_auth_method.name }} {% trans 'Login' %}</span>
                         </a>
                     </div>
