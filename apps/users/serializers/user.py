@@ -288,7 +288,18 @@ class UserSerializer(
         source = self.fields.get("source")
         if not source:
             return
-        open_source = ["local", "ldap", "cas"]
+        open_source = [
+            User.Source.local.value,
+            User.Source.ldap.value,
+            User.Source.cas.value,
+        ]
+        if settings.AUTH_OPENID:
+            open_source.append(User.Source.openid.value)
+
+        instance_source = getattr(self.instance, "source", None)
+        if instance_source:
+            open_source.append(instance_source)
+
         choices = dict(source.choices)
         if not settings.XPACK_ENABLED:
             choices = {k: v for k, v in choices.items() if k in open_source}
