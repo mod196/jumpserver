@@ -100,6 +100,10 @@ REDIS_PORT: 6379
 # 启用后，即使访问 ?admin=1 也不会显示或接受用户名密码登录，请确保第三方认证可用
 # DISABLE_LOCAL_PASSWORD_LOGIN: False
 
+# 是否从 OpenID/OIDC 的 groups claim 同步用户组
+# 默认关闭，建议在 JumpServer 内单独维护用户组和资产授权；如需由 IdP 管理用户组，再显式开启
+# AUTH_OPENID_SYNC_GROUPS: False
+
 # 开启人脸识别 XPACK 功能
 #FACE_RECOGNITION_ENABLED: true
 #FACE_RECOGNITION_DISTANCE_THRESHOLD': 0.35

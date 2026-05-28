@@ -86,6 +86,7 @@ class Command(BaseCommand):
             'AUTH_OPENID_USE_STATE': True,
             'AUTH_OPENID_USE_NONCE': True,
             'AUTH_OPENID_ALWAYS_UPDATE_USER': True,
+            'AUTH_OPENID_SYNC_GROUPS': False,
             'AUTH_OPENID_IGNORE_SSL_VERIFICATION': False,
             'AUTH_OPENID_SHARE_SESSION': True,
             'AUTH_OPENID_PKCE': False,
@@ -94,7 +95,6 @@ class Command(BaseCommand):
                 'name': ['name', 'display_name', 'preferred_username', 'email'],
                 'username': ['preferred_username', 'email', 'upn', 'sub'],
                 'email': ['email', 'preferred_username', 'upn'],
-                'groups': 'groups',
             },
         }
 

@@ -13,6 +13,7 @@ from django.urls import reverse
 
 from authentication.backends.oidc.views import OIDCEndSessionView
 from authentication.backends.oidc.backends import OIDCAuthCodeBackend
+from authentication.backends.oidc.signals import openid_create_or_update_user
 from authentication.backends.oidc.utils import (
     _validate_claims,
     get_openid_allowed_issuers,
@@ -20,6 +21,8 @@ from authentication.backends.oidc.utils import (
 )
 from authentication.management.commands.configure_oidc_from_env import Command
 from authentication.views.login import UserLoginView
+from orgs.models import Organization
+from users.models import UserGroup
 
 
 ONLY_OPENID_AUTH_SETTINGS = {
@@ -169,6 +172,22 @@ class OIDCTests(SimpleTestCase):
             encrypted=False,
             category='oidc',
         )
+        mock_update_or_create.assert_any_call(
+            name='AUTH_OPENID_SYNC_GROUPS',
+            value=False,
+            encrypted=False,
+            category='oidc',
+        )
+        mock_update_or_create.assert_any_call(
+            name='AUTH_OPENID_USER_ATTR_MAP',
+            value={
+                'name': ['name', 'display_name', 'preferred_username', 'email'],
+                'username': ['preferred_username', 'email', 'upn', 'sub'],
+                'email': ['email', 'preferred_username', 'upn'],
+            },
+            encrypted=False,
+            category='oidc',
+        )
         self.assertNotIn(secret, stdout.getvalue())
 
     @override_settings(
@@ -238,6 +257,76 @@ class OIDCTests(SimpleTestCase):
             query['post_logout_redirect_uri'],
             ['https://jumpserver.example.com/core/auth/login/?oidc_logged_out=1'],
         )
+
+
+class OIDCUserGroupSyncTests(TestCase):
+    @override_settings(
+        AUTH_OPENID_SYNC_GROUPS=False,
+        OPENID_ORG_IDS=[Organization.DEFAULT_ID],
+    )
+    def test_oidc_groups_claim_is_ignored_by_default(self):
+        user = get_user_model().objects.create(username='oidc-user')
+
+        openid_create_or_update_user.send(
+            sender=self.__class__, user=user, created=True,
+            attrs={
+                'username': 'oidc-user',
+                'email': 'oidc-user@example.com',
+                'groups': ['entra-group-id'],
+            },
+        )
+
+        user.refresh_from_db()
+        self.assertEqual(user.source, user.Source.openid.value)
+        self.assertFalse(UserGroup.objects.filter(name='entra-group-id').exists())
+        self.assertFalse(user.groups.exists())
+
+    @override_settings(
+        AUTH_OPENID_SYNC_GROUPS=False,
+        OPENID_ORG_IDS=[Organization.DEFAULT_ID],
+    )
+    def test_manual_user_groups_are_kept_when_oidc_sync_disabled(self):
+        user = get_user_model().objects.create(username='oidc-user', source='openid')
+        manual_group = UserGroup.objects.create(
+            name='jumpserver-managed-group', org_id=Organization.DEFAULT_ID
+        )
+        user.groups.add(manual_group)
+
+        openid_create_or_update_user.send(
+            sender=self.__class__, user=user, created=False,
+            attrs={
+                'username': 'oidc-user',
+                'email': 'oidc-user@example.com',
+                'groups': ['entra-group-id'],
+            },
+        )
+
+        user.refresh_from_db()
+        self.assertEqual(
+            list(user.groups.values_list('name', flat=True)),
+            ['jumpserver-managed-group']
+        )
+        self.assertFalse(UserGroup.objects.filter(name='entra-group-id').exists())
+
+    @override_settings(
+        AUTH_OPENID_SYNC_GROUPS=True,
+        OPENID_ORG_IDS=[Organization.DEFAULT_ID],
+    )
+    def test_oidc_groups_claim_is_synced_when_enabled(self):
+        user = get_user_model().objects.create(username='oidc-user')
+
+        openid_create_or_update_user.send(
+            sender=self.__class__, user=user, created=True,
+            attrs={
+                'username': 'oidc-user',
+                'email': 'oidc-user@example.com',
+                'groups': ['entra-group-id'],
+            },
+        )
+
+        user.refresh_from_db()
+        self.assertTrue(UserGroup.objects.filter(name='entra-group-id').exists())
+        self.assertEqual(list(user.groups.values_list('name', flat=True)), ['entra-group-id'])
 
 
 class LoginTemplateTests(TestCase):

@@ -365,6 +365,7 @@ class Config(dict):
         'AUTH_OPENID_USE_STATE': True,
         'AUTH_OPENID_USE_NONCE': True,
         'AUTH_OPENID_ALWAYS_UPDATE_USER': True,
+        'AUTH_OPENID_SYNC_GROUPS': False,
 
         # Keycloak 旧配置参数 (version <= 1.5.8 (discarded))
         'AUTH_OPENID_KEYCLOAK': True,

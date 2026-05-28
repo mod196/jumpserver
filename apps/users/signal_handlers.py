@@ -58,7 +58,8 @@ def user_authenticated_handle(user, created, source, attrs=None, **kwargs):
         org_ids = bind_user_to_org_role(user)
         if isinstance(attrs, dict):
             group_names = attrs.get('groups')
-            bind_user_to_group(org_ids, group_names, user)
+            if should_sync_user_groups(source):
+                bind_user_to_group(org_ids, group_names, user)
 
     if not attrs:
         return
@@ -155,13 +156,10 @@ def radius_create_user(sender, user, **kwargs):
 
 @receiver(openid_create_or_update_user)
 def on_openid_create_or_update_user(sender, user, created, attrs, **kwargs):
-    group_names = attrs.get('groups')
-    if created:
-        org_ids = bind_user_to_org_role(user)
-    else:
+    if not created and should_sync_user_groups(User.Source.openid.value):
+        group_names = attrs.get('groups')
         org_ids = user.joined_orgs.values_list('id', flat=True)
-
-    bind_user_to_group(org_ids, group_names, user)
+        bind_user_to_group(org_ids, group_names, user)
     source = User.Source.openid.value
     user_authenticated_handle(user, created, source, attrs, **kwargs)
 
@@ -227,6 +225,12 @@ def bind_user_to_org_role(user):
 
     RoleBinding.objects.bulk_create(bindings, ignore_conflicts=True)
     return org_ids
+
+
+def should_sync_user_groups(source):
+    if source == User.Source.openid.value:
+        return settings.AUTH_OPENID_SYNC_GROUPS
+    return True
 
 
 def bind_user_to_group(org_ids, group_names, user):

@@ -133,4 +133,12 @@ class OIDCSettingSerializer(KeycloakSettingSerializer):
     AUTH_OPENID_ALWAYS_UPDATE_USER = serializers.BooleanField(
         required=False, label=_('Always update user')
     )
+    AUTH_OPENID_SYNC_GROUPS = serializers.BooleanField(
+        required=False,
+        label=_('Sync user groups'),
+        help_text=_(
+            'When enabled, JumpServer creates and binds user groups from the OIDC groups claim. '
+            'Keep disabled if user group permissions are managed in JumpServer.'
+        )
+    )
     OPENID_ORG_IDS = OrgListField()
